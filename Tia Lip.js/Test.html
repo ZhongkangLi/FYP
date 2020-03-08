@@ -1,0 +1,194 @@
+<html>
+<head>
+    <title>My first three.js app</title>
+    <style>
+        body { margin: 0; }
+        canvas { width: 100%; height: 100% }
+    </style>
+</head>
+<body>
+<script src="libs/three.js"></script>
+<script src="libs/GLTFLoader.js"></script>
+<script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.bootcss.com/dat-gui/0.7.1/dat.gui.min.js"></script>
+<script>
+
+    var scene = new THREE.Scene();
+    /**
+     * 初始化 dat.GUI
+     */
+    var gui= {
+        helper:true //模型辅助线
+    };
+    var datGui = new dat.GUI();
+
+    /**
+     * 创建网格模型
+     */
+    m = new Map([[0, ["AH","HH"]], [1, ["B", "P", "M"]], [2, ["EH"]],[3, ["EY"]], [4, ["ER"]],
+                    [5, ["F", "V"]], [6, ["Y", "IH", "IY"]], [7, ["K", "G", "NG"]], [8, ["AO"]], [9, ["S", "Z"]],
+                    [10, ["SH", "ZH", "CH", "JH"]], [11, ["T", "D", "N", "L"]], [12, ["UW", "UH", "W", "R"]], [13, ["AE"]], [14, ["DH", "TH"]]]);
+    var mixer = null; //声明一个混合器变量
+    var loader = new THREE.GLTFLoader();
+       loader.load( 'Final4.0.glb', function ( glf ) {
+           glf.scene.position.set(200,-30,-50);
+           glf.scene.children[0].scale.set(300, 300, 300);
+           scene.add(glf.scene);
+           // glf作为混合器的参数，可以播放obj包含的帧动画数据
+           mixer = new THREE.AnimationMixer(glf.scene);
+
+           // // 剪辑clip作为参数，通过混合器clipAction方法返回一个操作对象AnimationAction
+           // var AnimationAction = mixer.clipAction(glf.animations[10]);
+           // AnimationAction.play();
+           // AnimationAction.loop = THREE.LoopOnce; //不循环播放
+           // AnimationAction.clampWhenFinished=true;//暂停在最后一帧播放的状态
+
+           var actions = []; //所有的动画数组
+           var animations = datGui.addFolder("animations");
+           for(var i=0; i<glf.animations.length; i++){
+                createAction(i);
+           }
+           function createAction(i) {
+               actions[i] = mixer.clipAction(glf.animations[i]);
+               gui[glf.animations[i].name] = function () {
+                   for(var j=0; j<actions.length; j++){
+                       if(j === i){
+                           AnimationAction.timeScale = 1;
+                           actions[j].play();
+                           actions[j].loop = THREE.LoopOnce; //不循环播放
+                           actions[j].clampWhenFinished=true;//暂停在最后一帧播放的状态
+                       }
+                       else{
+                           actions[j].stop();
+                       }
+                   }
+               };
+
+               animations.add(gui, glf.animations[i].name);
+           }
+
+
+           var AnimationAction = mixer.clipAction(glf.animations[0]);
+           AnimationAction.loop = THREE.LoopOnce;
+           AnimationAction.play();
+           // recursion!!!
+
+           mixer.addEventListener('finished', function (e) {
+               l()
+           });
+
+           var p = 0;
+           function l() {
+               if (p >= 14){
+                   return;
+               }
+               p++;
+               AnimationAction = mixer.clipAction(glf.animations[p]);
+               AnimationAction.timeScale = 0.4;
+               AnimationAction.loop = THREE.LoopOnce;
+               AnimationAction.play();
+               mixer.addEventListener('finished', function (e) {
+                   l();
+               });
+           }
+
+
+
+
+       }, undefined, function ( error ) {
+
+           console.error( error );
+
+       } );
+
+
+    //输入框
+    var inputBox = new function(){
+        this.input = " ";
+    };
+    var controls = datGui.add(inputBox, "input");
+    controls.onFinishChange(function (value) {
+
+        var httpRequest = new XMLHttpRequest();
+        httpRequest.open('GET', 'http://www.speech.cs.cmu.edu/cgi-bin/cmudict?in='+value, true);
+        httpRequest.setRequestHeader("Access-Control-Allow-Origin", "*");
+        // httpRequest.setHeaderValue("Access-Control-Allow-Origin");
+        httpRequest.send();
+
+        httpRequest.onreadystatechange = function () {
+            if (httpRequest.readyState == 4 && httpRequest.status == 200) {
+                var json = httpRequest.responseText;//获取到json字符串，还需解析
+                var obj = JSON.stringify(json);
+                var html = eval("("+obj+")");
+                var line = html.split("\n")[37];
+                var start = line.lastIndexOf("\<tt\>");
+                var tail = line.lastIndexOf("tt");
+                var result = line.substr(start+4,tail-start-8).split(" ");
+
+                console.log(result);
+                animations = [];
+                for (var i = 0; i<result.length; i++) {
+                    m.forEach(function (value, key, map) {
+                            if (map.get(key).indexOf(result[i])>-1){
+                                animations.push(key);
+                            }
+                    })
+                }
+                console.log(animations);
+            }
+        };
+    });
+
+
+    // 辅助坐标系
+    scene.add(new THREE.AxesHelper(300));
+
+    /**
+     * 光源设置
+     */
+        //点光源
+    var point = new THREE.PointLight(0xffffff);
+    point.position.set(400, 200, 300); //点光源位置
+    scene.add(point); //点光源添加到场景中
+    //环境光
+    var ambient = new THREE.AmbientLight(0x999999);
+    scene.add(ambient);
+    /**
+     * 相机设置
+     */
+    var width = window.innerWidth; //窗口宽度
+    var height = window.innerHeight; //窗口高度
+    var k = width / height; //窗口宽高比
+    var s = 200; //三维场景缩放系数
+    //创建相机对象
+    var camera = new THREE.OrthographicCamera(-s * k, s * k, s, -s, 1, 1000);
+    camera.position.set(100, 20, 200); //设置相机位置
+    camera.lookAt(scene.position); //设置相机方向(指向的场景对象)
+    /**
+     * 创建渲染器对象
+     */
+    var renderer = new THREE.WebGLRenderer({
+        antialias: true
+    });
+    renderer.setSize(width, height);
+    renderer.setClearColor(0xb9d3ff, 1);
+    document.body.appendChild(renderer.domElement);
+
+    var clock = new THREE.Clock();
+
+    function render() {
+        renderer.render(scene, camera);
+        requestAnimationFrame(render);
+
+        if(mixer!==null){
+
+            mixer.update(clock.getDelta());
+        }
+    }
+    render();
+    var controls = new THREE.OrbitControls(camera,renderer.domElement);
+    controls.addEventListener('change', render);
+
+</script>
+</body>
+</html>
